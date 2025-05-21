@@ -1,44 +1,84 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gestion des Stocks de Tenues de Sport</title>
-  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <title>Compteur d'abdos</title>
+  <style>
+    body { text-align: center; font-family: sans-serif; background: #111; color: white; }
+    video, canvas { width: 100%; height: auto; max-width: 600px; }
+    h1 { margin-top: 10px; }
+  </style>
 </head>
 <body>
+  <h1>Abdos : <span id="count">0</span></h1>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="output"></canvas>
+  <audio id="beep" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg"></audio>
 
-  <div class="container">
-    <h1 class="text-center mt-4">Gestion des Stocks de Tenues de Sport</h1>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-    <!-- Formulaire pour ajouter des tenues -->
-    <form id="form-tenue" class="mb-4">
-      <div class="form-group">
-        <label for="nom">Nom de la Tenue</label>
-        <input type="text" class="form-control" id="nom" required>
-      </div>
-      <div class="form-group">
-        <label for="quantite">Quantité</label>
-        <input type="number" class="form-control" id="quantite" required>
-      </div>
-      <button type="submit" class="btn btn-primary">Ajouter Tenue</button>
-    </form>
+  <script>
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('output');
+    const canvasCtx = canvasElement.getContext('2d');
+    const beep = document.getElementById('beep');
+    const counter = document.getElementById('count');
+    let count = 0;
+    let state = 'up';
 
-    <!-- Table pour afficher les tenues -->
-    <table class="table table-striped">
-      <thead>
-        <tr>
-          <th>Nom</th>
-          <th>Quantité</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="table-tenues">
-        <!-- Les données des tenues seront affichées ici -->
-      </tbody>
-    </table>
-  </div>
+    function onResults(results) {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
 
-  <script src="app.js"></script>
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      if (results.poseLandmarks) {
+        const noseY = results.poseLandmarks[0].y;
+        const hipY = results.poseLandmarks[23].y; // Left hip
+        const ratio = noseY / hipY;
+
+        if (ratio < 0.85 && state === 'down') {
+          state = 'up';
+          count++;
+          counter.textContent = count;
+          beep.play();
+        } else if (ratio > 1.0) {
+          state = 'down';
+        }
+
+        drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+        drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#FF0000', lineWidth: 1 });
+      }
+
+      canvasCtx.restore();
+    }
+
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 0,
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+
+    camera.start();
+  </script>
 </body>
 </html>
